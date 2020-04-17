@@ -1,0 +1,70 @@
+---
+- name: "New provision script to setup ec2 Instance"
+  hosts: local
+  connection: local
+  gather_facts: false
+  vars:
+    keyname: flat11fquarkey
+    sgroup: ansible-lab
+    region: us-east-2
+    image: ami-0f7919c33c90f5b58
+    security_group: ansible-lab
+    instance_type: t2.micro
+    aws_access_key:  
+    aws_secret_key: 
+    count: 1
+    debug_enable: true
+  tasks:
+    - name: "Create a new key pair"
+      ec2_key:
+        name: "{{ keyname }}"
+        region: "{{ region }}"
+        aws_access_key: "{{ aws_access_key }}"
+        aws_secret_key: "{{ aws_secret_key }}"
+      register: ec2_keyout
+    - debug:
+        var: ec2_keyout
+    - name: "Saving Key for access"
+      copy: content="{{ ec2_keyout.key.private_key }}" dest="/home/desktop/JAINAWS/{{ keyname }}.pem" mode=0400
+      when: ec2_keyout.changed
+    - name: "labCreation - Creating Security Group"
+      ec2_group:
+        name: "{{ sgroup }}"
+        description: "Security Group For Ansible Lab"
+        region: "{{ region }}"
+        rules:
+          - proto: all
+            cidr_ip: 0.0.0.0/0
+        rules_egress:
+          - proto: all
+            cidr_ip: 0.0.0.0/0
+    - name: "Creating a new Ec2 Instance"
+      ec2:
+        aws_access_key: "{{ aws_access_key }}"
+        aws_secret_key: "{{ aws_secret_key }}"
+        region: "{{ region }}"
+        instance_type: "{{ instance_type }}"
+        image: "{{ image }}"
+        group: "{{ security_group }}"
+        keypair: "{{ keyname }}"
+        count: 1
+        wait: true
+        wait_timeout: 500
+        count_tag:
+          name: "Ansible/Master"
+          instance_tags:
+          Name: "Ansible/Master"
+          role: "Ansible-lab"
+      register: master_output
+    - debug:
+        var: master_output
+    - debug:
+        var: master_output.instances.0.public_ip
+
+    - name: "Waiting for master to come online"
+      wait_for:
+        port: 22
+        host: "{{ master_output.instances.0.public_ip }}"
+        timeout: 20
+        state: started
+        delay: 5
